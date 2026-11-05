@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strconv"
 	"strings"
 
@@ -20,8 +21,27 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// version is set at build time by GoReleaser.
+// version is set at build time by GoReleaser. Other builds leave it alone and
+// use the version the Go toolchain records instead.
 var version = "dev"
+
+// buildVersion returns the version to show for this binary.
+func buildVersion() string {
+	var recorded string
+	if info, ok := debug.ReadBuildInfo(); ok {
+		recorded = info.Main.Version
+	}
+	return pickVersion(version, recorded)
+}
+
+// pickVersion prefers a version set at build time, then the one the toolchain
+// recorded. The leading v is dropped so every build prints versions the same way.
+func pickVersion(set, recorded string) string {
+	if set != "dev" || recorded == "" || recorded == "(devel)" {
+		return set
+	}
+	return strings.TrimPrefix(recorded, "v")
+}
 
 type flags struct {
 	format       string
@@ -48,7 +68,7 @@ func main() {
 func execute() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	return fang.Execute(ctx, newRootCmd(), fang.WithVersion(version))
+	return fang.Execute(ctx, newRootCmd(), fang.WithVersion(buildVersion()))
 }
 
 func newRootCmd() *cobra.Command {
