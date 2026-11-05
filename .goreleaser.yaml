@@ -1,0 +1,40 @@
+version: 2
+
+project_name: squish
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/squish
+    binary: squish
+    env:
+      - CGO_ENABLED=0
+    tags:
+      - nodynamic
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"

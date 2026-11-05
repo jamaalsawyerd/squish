@@ -50,3 +50,13 @@ func TestDrawingClipsToCanvas(t *testing.T) {
 	FillEllipse(m, 2, 2, 40, 40, func(float64) color.NRGBA { return c })
 	Blit(m, m, image.Rect(-3, -3, 9, 9))
 }
+
+func TestMonoUsesPlainCharacters(t *testing.T) {
+	SetMono(true)
+	defer SetMono(false)
+	m := New(4, 2)
+	FillRect(m, image.Rect(0, 0, 2, 2), color.NRGBA{255, 255, 255, 255})
+	if got, want := Render(m), "@@  "; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}

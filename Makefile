@@ -1,4 +1,4 @@
-.PHONY: build run test lint fmt tidy clean
+.PHONY: build run test lint fmt tidy clean samples demo
 
 # nodynamic keeps codecs from picking up system libraries, so a build behaves
 # the same on every machine.
@@ -14,13 +14,19 @@ test:
 	go test -tags $(TAGS) -race ./...
 
 lint:
-	golangci-lint run
+	golangci-lint run --build-tags $(TAGS)
 
 fmt:
 	golangci-lint fmt
 
 tidy:
 	go mod tidy
+
+samples:
+	./scripts/fetch-samples.sh
+
+demo: build samples
+	vhs docs/demo.tape
 
 clean:
 	rm -rf bin dist

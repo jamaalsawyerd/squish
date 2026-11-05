@@ -90,7 +90,7 @@ func newResults(app *model, c *crunchModel) *resultsModel {
 	if r.done > 0 {
 		r.earned = app.stats.Add(stats.Batch{
 			Saved: r.totalIn - r.totalOut, Files: r.done,
-			Problems: r.skipped + r.failed, BestPercent: best,
+			Problems: r.skipped + r.failed + r.canceled, BestPercent: best,
 		})
 		if app.cfg.StatsPath != "" {
 			_ = app.stats.Save(app.cfg.StatsPath) // Losing stats is not worth interrupting anyone.
@@ -116,7 +116,8 @@ func (r *resultsModel) findTip() string {
 		}
 	}
 	if low > 0 {
-		return fmt.Sprintf("Tip: %d PNG files barely shrank. Format: Auto usually does much better on those.", low)
+		return fmt.Sprintf("Tip: %s barely shrank. Format: Auto usually does much better on those.",
+			units.Count(low, "PNG file"))
 	}
 	return ""
 }
@@ -349,7 +350,7 @@ func (r *resultsModel) view(w, h int) string {
 	for i := r.offset; i < min(r.offset+rows, len(r.rows)); i++ {
 		lines = append(lines, r.rowLine(r.rows[i], w-4, i == r.cursor))
 	}
-	list := r.app.panel(fmt.Sprintf("%d files", len(r.rows)), strings.Join(lines, "\n"), w, listH, false)
+	list := r.app.panel(units.Count(len(r.rows), "file"), strings.Join(lines, "\n"), w, listH, false)
 	parts := []string{r.band(w), head, list}
 	parts = append(parts, extras...)
 	parts = append(parts, r.app.footer(keys.Up, keys.Compare, keys.Retune, keys.New, keys.Quit))

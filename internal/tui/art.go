@@ -186,6 +186,7 @@ type press struct {
 	parts   []particle
 	seed    uint32
 	hit     bool
+	w, h    int // Size in pixels, set by the screen that shows the press.
 }
 
 const (
@@ -204,7 +205,7 @@ func (p *press) rand() float64 {
 	return float64(p.seed>>16&0xFFFF) / 0xFFFF
 }
 
-func (p *press) step(w, h int) {
+func (p *press) step() {
 	target := 0.0
 	if p.running {
 		p.timer--
@@ -227,13 +228,14 @@ func (p *press) step(w, h int) {
 	p.plate.to(target)
 	if p.down && !p.hit && p.plate.pos > 0.9 {
 		p.hit = true
-		p.puff(w, h)
+		p.puff()
 	}
 	p.parts = stepParticles(p.parts)
 }
 
 // puff sprays out colored crumbs, which are the bytes leaving the file.
-func (p *press) puff(w, h int) {
+func (p *press) puff() {
+	w, h := p.w, p.h
 	stops := theme.Gradient(puffCount)
 	for i := range puffCount {
 		dir := 1.0
@@ -255,8 +257,9 @@ var (
 	steelDark  = color.NRGBA{74, 70, 92, 255}
 )
 
-// view draws the press into a pixel area.
-func (p *press) view(w, h int) string {
+// view draws the press at its current size in pixels.
+func (p *press) view() string {
+	w, h := p.w, p.h
 	c := gfx.New(w, h)
 	const (
 		pillar = 3

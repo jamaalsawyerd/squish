@@ -9,8 +9,8 @@ import (
 // A real encode takes too long to run on every setting change, so estimates
 // encode a mosaic of tiles sampled across the image and scale the result up.
 const (
-	estimateTile = 192
-	estimateGrid = 4
+	estimateTile = 96
+	estimateGrid = 8
 )
 
 // Estimate predicts the size of the output. Small images are simply encoded.

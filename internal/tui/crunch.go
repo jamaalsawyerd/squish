@@ -97,8 +97,7 @@ func (c *crunchModel) init() tea.Cmd { return c.waitEvent() }
 func (c *crunchModel) animating() bool { return !c.closed }
 
 func (c *crunchModel) step() {
-	const pressCols, pressRows = 44, 36
-	c.press.step(pressCols, pressRows)
+	c.press.step()
 	c.counter.to(float64(c.savedBytes))
 	c.bar.to(c.progress())
 }
@@ -239,7 +238,8 @@ func (c *crunchModel) view(w, h int) string {
 	list := c.app.panel(fmt.Sprintf("%d of %d", c.done, len(c.files)), c.listBody(listW-4, bodyH-3), listW, bodyH, false)
 
 	cols, rows := pressW-4, bodyH-4
-	scene := c.press.view(cols, rows*2)
+	c.press.w, c.press.h = cols, rows*2
+	scene := c.press.view()
 	caption := lipgloss.PlaceHorizontal(cols, lipgloss.Center, th.Accent.Render(c.quip))
 	press := c.app.panel("", scene+"\n"+caption, pressW, bodyH, true)
 

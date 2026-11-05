@@ -23,6 +23,9 @@ type Decoded struct {
 	Opaque bool
 	ICC    []byte // Raw ICC profile, if any.
 	Exif   []byte // TIFF payload with no "Exif" prefix, orientation reset to 1.
+	// Damaged means the file was cut short. What survived was still decoded,
+	// which is the best that can be done, but the image will be incomplete.
+	Damaged bool
 }
 
 // Info is what can be learned about a file without decoding its pixels.
@@ -52,13 +55,19 @@ func Probe(data []byte) (Info, error) {
 		return Info{}, ErrUnknownFormat
 	}
 	if err != nil {
-		return Info{Format: f}, fmt.Errorf("reading %s header: %w", f, err)
+		return Info{Format: f}, fmt.Errorf("%w: reading %s header: %w", ErrDamaged, f, err)
+	}
+	if int64(cfg.Width)*int64(cfg.Height) > maxPixels {
+		return Info{Format: f}, fmt.Errorf("%w: %d×%d", ErrTooLarge, cfg.Width, cfg.Height)
 	}
 	return Info{Format: f, Width: cfg.Width, Height: cfg.Height}, nil
 }
 
 // Decode reads an image, applies any EXIF rotation and extracts metadata.
 func Decode(data []byte) (*Decoded, error) {
+	if _, err := Probe(data); err != nil {
+		return nil, err
+	}
 	d := &Decoded{Format: Sniff(data)}
 	var (
 		m   image.Image
@@ -122,13 +131,22 @@ func decodeJPEG(data []byte, d *Decoded) (image.Image, error) {
 		UpsampleMethod: jpegn.CatmullRom,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("decoding JPEG: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrDamaged, err)
 	}
 	d.ICC = jpegICC(data)
+	d.Damaged = !jpegComplete(data)
 	if raw, err := jpegn.RawExif(bytes.NewReader(data)); err == nil {
 		d.Exif = stripExifPrefix(raw)
 	}
 	return m, nil
+}
+
+// jpegComplete looks for the end of image marker. Some cameras and editors
+// write padding after it, so it need not be the last two bytes.
+func jpegComplete(data []byte) bool {
+	const searchTail = 1 << 20
+	tail := data[max(len(data)-searchTail, 0):]
+	return bytes.LastIndex(tail, []byte{0xFF, 0xD9}) >= 0
 }
 
 func decodePNG(data []byte, d *Decoded) (image.Image, error) {
@@ -138,7 +156,7 @@ func decodePNG(data []byte, d *Decoded) (image.Image, error) {
 	var meta pngn.Metadata
 	m, err := pngn.Decode(bytes.NewReader(data), &pngn.Options{Metadata: &meta, AutoRotate: true})
 	if err != nil {
-		return nil, fmt.Errorf("decoding PNG: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrDamaged, err)
 	}
 	if meta.ICCProfile != nil {
 		d.ICC = meta.ICCProfile.Profile
@@ -154,7 +172,7 @@ func decodeWebP(data []byte, d *Decoded) (image.Image, error) {
 	}
 	m, err := vpxwebp.Decode(bytes.NewReader(data), vpxwebp.Options{AutoRotate: true, Threads: 1})
 	if err != nil {
-		return nil, fmt.Errorf("decoding WebP: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrDamaged, err)
 	}
 	d.ICC = webpChunk(chunks, "ICCP")
 	d.Exif = stripExifPrefix(webpChunk(chunks, "EXIF"))
@@ -167,7 +185,7 @@ func decodeAVIF(data []byte) (image.Image, error) {
 	}
 	m, err := avif.Decode(bytes.NewReader(data), avif.Options{AutoRotate: true})
 	if err != nil {
-		return nil, fmt.Errorf("decoding AVIF: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrDamaged, err)
 	}
 	return m, nil
 }
@@ -175,7 +193,7 @@ func decodeAVIF(data []byte) (image.Image, error) {
 func decodeGIF(data []byte) (image.Image, error) {
 	g, err := gif.DecodeAll(bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("decoding GIF: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrDamaged, err)
 	}
 	if len(g.Image) > 1 {
 		return nil, ErrAnimated

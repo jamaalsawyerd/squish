@@ -20,7 +20,7 @@ type Achievement struct {
 type Batch struct {
 	Saved       int64
 	Files       int
-	Problems    int // Failed or skipped files.
+	Problems    int // Files that failed, were skipped or were canceled.
 	BestPercent float64
 }
 

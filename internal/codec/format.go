@@ -26,6 +26,16 @@ var ErrAnimated = errors.New("animated images are not supported yet")
 // ErrUnknownFormat reports a file that is not a supported image.
 var ErrUnknownFormat = errors.New("not a supported image")
 
+// ErrDamaged reports a file that looks like an image but cannot be read.
+var ErrDamaged = errors.New("damaged or incomplete image")
+
+// ErrTooLarge reports an image too big to decode safely. A small file can
+// declare enormous dimensions, so this is checked before allocating pixels.
+var ErrTooLarge = errors.New("image is too large")
+
+// maxPixels is far beyond any camera, and needs about 2 GB to decode.
+const maxPixels = 500_000_000
+
 func (f Format) String() string {
 	switch f {
 	case JPEG:

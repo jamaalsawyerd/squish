@@ -74,6 +74,7 @@ type tuneModel struct {
 	confirming bool
 
 	format, level, size, save int
+	startLevel                int
 	keepMeta                  bool
 
 	dec        *codec.Decoded
@@ -98,6 +99,7 @@ func newTune(app *model, files []string) *tuneModel {
 	if t.level == 0 {
 		t.level = codec.LevelBalanced
 	}
+	t.startLevel = t.level
 	for i, f := range formatChoices {
 		if f == o.Target {
 			t.format = i
@@ -139,7 +141,9 @@ func (t *tuneModel) options() engine.Options {
 	o := t.app.opts
 	o.Target = formatChoices[t.format]
 	o.Level = t.level
-	o.Quality = 0
+	if t.level != t.startLevel {
+		o.Quality = 0 // Moving the slider replaces any --quality from the command line.
+	}
 	o.MaxDim = sizeChoices[t.size]
 	o.KeepMetadata = t.keepMeta
 	o.OutDir, o.InPlace = "", false

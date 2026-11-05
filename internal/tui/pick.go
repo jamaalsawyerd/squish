@@ -208,7 +208,7 @@ func (p *pickModel) addPaths(paths []string) tea.Cmd {
 		added++
 	}
 	if added > 0 {
-		p.status = fmt.Sprintf("Added %d files", added)
+		p.status = "Added " + units.Count(added, "file")
 	}
 	return cmd
 }

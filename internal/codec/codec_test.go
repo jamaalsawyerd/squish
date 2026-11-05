@@ -258,6 +258,53 @@ func TestAnimatedGIFIsRefused(t *testing.T) {
 	}
 }
 
+func TestTruncatedJPEGIsFlagged(t *testing.T) {
+	var buf bytes.Buffer
+	err := jpegn.Encode(&buf, noise(128, 128), &jpegn.EncodeOptions{Quality: 90})
+	if err != nil {
+		t.Fatal(err)
+	}
+	whole, err := Decode(buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if whole.Damaged {
+		t.Error("complete file was flagged as damaged")
+	}
+	cut, err := Decode(buf.Bytes()[:buf.Len()*2/3])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cut.Damaged {
+		t.Error("truncated file was not flagged")
+	}
+}
+
+func TestTruncatedProgressiveJPEGFails(t *testing.T) {
+	data, err := Encode(noise(128, 128), true, Options{Format: JPEG, Quality: 90})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Decode(data[:len(data)*2/3]); !errors.Is(err, ErrDamaged) {
+		t.Errorf("err = %v, want ErrDamaged", err)
+	}
+}
+
+func TestHugeDeclaredSizeIsRefused(t *testing.T) {
+	// A tiny GIF claiming 65535×65535, with no pixels behind it.
+	data := []byte("GIF89a\xFF\xFF\xFF\xFF\x00\x00\x00\x2C")
+	if _, err := Decode(data); !errors.Is(err, ErrTooLarge) {
+		t.Errorf("err = %v, want ErrTooLarge", err)
+	}
+}
+
+func TestBadHeaderIsReportedAsDamage(t *testing.T) {
+	data := []byte("\x89PNG\r\n\x1a\nnot really a png at all, just text")
+	if _, err := Decode(data); !errors.Is(err, ErrDamaged) {
+		t.Errorf("err = %v, want ErrDamaged", err)
+	}
+}
+
 func TestIsGraphic(t *testing.T) {
 	flat := image.NewNRGBA(image.Rect(0, 0, 200, 200))
 	for i := 3; i < len(flat.Pix); i += 4 {

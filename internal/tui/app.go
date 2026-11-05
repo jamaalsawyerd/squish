@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/jamaalsawyerd/squish/internal/engine"
+	"github.com/jamaalsawyerd/squish/internal/gfx"
 	"github.com/jamaalsawyerd/squish/internal/stats"
 	"github.com/jamaalsawyerd/squish/internal/tui/theme"
 	"github.com/jamaalsawyerd/squish/internal/units"
@@ -51,8 +52,8 @@ func (s Summary) String() string {
 	if s.Files == 0 {
 		return ""
 	}
-	return fmt.Sprintf("squish: saved %s across %d files (%s)",
-		units.Bytes(s.In-s.Out), s.Files, units.Fun(s.In-s.Out))
+	return fmt.Sprintf("squish: saved %s across %s (%s)",
+		units.Bytes(s.In-s.Out), units.Count(s.Files, "file"), units.Fun(s.In-s.Out))
 }
 
 // Run opens the app and blocks until it closes.
@@ -79,7 +80,6 @@ type model struct {
 	help          help.Model
 	screen        screen
 	width, height int
-	noColor       bool
 	ticking       bool
 	files         []string
 	opts          engine.Options
@@ -157,7 +157,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.th = theme.New(msg.IsDark())
 		m.applyTheme()
 	case tea.ColorProfileMsg:
-		m.noColor = msg.Profile == colorprofile.NoTTY || msg.Profile == colorprofile.Ascii
+		gfx.SetMono(msg.Profile == colorprofile.NoTTY || msg.Profile == colorprofile.Ascii)
 	case tickMsg:
 		m.ticking = false
 		m.step()
@@ -222,18 +222,17 @@ func (m *model) View() tea.View {
 }
 
 func (m *model) content() string {
-	if m.width < minWidth || m.height < minHeight {
-		return m.tooSmall()
-	}
 	var s string
-	switch m.screen {
-	case screenPick:
+	switch {
+	case m.width < minWidth || m.height < minHeight:
+		s = m.tooSmall()
+	case m.screen == screenPick:
 		s = m.pick.view(m.width, m.height)
-	case screenTune:
+	case m.screen == screenTune:
 		s = m.tune.view(m.width, m.height)
-	case screenCrunch:
+	case m.screen == screenCrunch:
 		s = m.crunch.view(m.width, m.height)
-	case screenResults:
+	case m.screen == screenResults:
 		s = m.results.view(m.width, m.height)
 	}
 	return lipgloss.NewStyle().MaxHeight(m.height).MaxWidth(m.width).Render(s)

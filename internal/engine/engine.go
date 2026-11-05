@@ -140,10 +140,13 @@ var pixelCost = map[codec.Format]int64{
 	codec.JPEG: 40,
 	codec.PNG:  12,
 	codec.WebP: 35,
-	codec.AVIF: 120,
+	codec.AVIF: avifCost,
 }
 
-const maxDefaultWorkers = 8
+const (
+	maxDefaultWorkers = 8
+	avifCost          = 300
+)
 
 func workerCount(n int) int {
 	if n > 0 {
@@ -246,6 +249,11 @@ func process(ctx context.Context, index int, path string, o Options, sem *semaph
 	}
 
 	out := Compress(dec, o)
+	if out.Format == codec.AVIF {
+		// AVIF's memory is outside the Go heap, so it is invisible to the memory
+		// limit and stays allocated until a collection runs its finalizers.
+		runtime.GC()
+	}
 	if out.Err != nil {
 		return finish(StatusFailed, friendlyError(out.Err))
 	}
@@ -331,6 +339,9 @@ func Compress(dec *codec.Decoded, o Options) Output {
 	if !dec.Opaque && out.Format == codec.JPEG {
 		out.Warnings = append(out.Warnings, "transparency flattened")
 	}
+	if dec.Damaged {
+		out.Warnings = append(out.Warnings, "original was damaged, parts of the image may be missing")
+	}
 	return out
 }
 
@@ -393,7 +404,11 @@ func friendlyError(err error) string {
 	case errors.Is(err, os.ErrPermission):
 		return "permission denied"
 	case errors.Is(err, codec.ErrUnknownFormat):
-		return "not a supported image"
+		return codec.ErrUnknownFormat.Error()
+	case errors.Is(err, codec.ErrDamaged):
+		return codec.ErrDamaged.Error()
+	case errors.Is(err, codec.ErrTooLarge):
+		return codec.ErrTooLarge.Error()
 	}
 	return err.Error()
 }

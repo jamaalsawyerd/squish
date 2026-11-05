@@ -43,7 +43,7 @@ func runPlain(ctx context.Context, inputs []string, o engine.Options) error {
 			fmt.Printf("  ! %s\n", w)
 		}
 	}
-	fmt.Printf("\nSaved %s across %d files", units.Bytes(in-out), done)
+	fmt.Printf("\nSaved %s across %s", units.Bytes(in-out), units.Count(done, "file"))
 	if done > 0 {
 		fmt.Printf(" (%.0f%% smaller, or %s)", units.Percent(in, out), units.Fun(in-out))
 	}
@@ -53,10 +53,10 @@ func runPlain(ctx context.Context, inputs []string, o engine.Options) error {
 	}
 	if canceled > 0 {
 		fmt.Printf("%d canceled\n", canceled)
-		return context.Canceled
+		return errors.New("stopped before finishing")
 	}
 	if failed > 0 {
-		return fmt.Errorf("%d files failed", failed)
+		return fmt.Errorf("%s failed", units.Count(failed, "file"))
 	}
 	return nil
 }

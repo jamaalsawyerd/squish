@@ -33,8 +33,40 @@ func appendColor(b *strings.Builder, prefix string, p []uint8) {
 	b.WriteByte('m')
 }
 
+// mono switches rendering to plain characters, for terminals without color.
+var mono bool
+
+// SetMono turns monochrome rendering on or off. Half blocks are meaningless
+// without color, while shaded characters still show what an image looks like.
+func SetMono(on bool) { mono = on }
+
+// shades runs from empty to solid.
+const shades = " .:-=+*#%@"
+
+func renderMono(m *image.NRGBA) string {
+	w, h := m.Rect.Dx(), m.Rect.Dy()
+	var b strings.Builder
+	for y := 0; y < h; y += 2 {
+		if y > 0 {
+			b.WriteByte('\n')
+		}
+		for x := range w {
+			p := m.Pix[m.PixOffset(x, y):]
+			luma := (299*int(p[0]) + 587*int(p[1]) + 114*int(p[2])) / 1000
+			if p[3] < alphaCutoff {
+				luma = 0
+			}
+			b.WriteByte(shades[luma*(len(shades)-1)/255])
+		}
+	}
+	return b.String()
+}
+
 // Render turns a canvas into text, one row of cells per two rows of pixels.
 func Render(m *image.NRGBA) string {
+	if mono {
+		return renderMono(m)
+	}
 	w, h := m.Rect.Dx(), m.Rect.Dy()
 	var b strings.Builder
 	b.Grow(w * h * 12)

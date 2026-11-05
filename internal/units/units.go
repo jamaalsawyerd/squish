@@ -29,6 +29,14 @@ func Percent(before, after int64) float64 {
 	return 100 * (1 - float64(after)/float64(before))
 }
 
+// Count formats a number of things, with the right plural.
+func Count(n int, thing string) string {
+	if n == 1 {
+		return "1 " + thing
+	}
+	return fmt.Sprintf("%d %ss", n, thing)
+}
+
 // PercentLabel formats a saving without ever claiming a file vanished, which
 // is what rounding would do at the top of the scale.
 func PercentLabel(p float64) string {

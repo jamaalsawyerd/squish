@@ -1,13 +1,17 @@
 package tui
 
 import (
+	"os"
 	"slices"
 	"testing"
 )
 
 func TestParsePaths(t *testing.T) {
 	t.Setenv("WSL_DISTRO_NAME", "Ubuntu")
-	t.Setenv("HOME", "/home/me")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home directory")
+	}
 	tests := []struct {
 		name, in string
 		want     []string
@@ -19,7 +23,7 @@ func TestParsePaths(t *testing.T) {
 		{"lines", "/a.jpg\n/b.jpg\r\n", []string{"/a.jpg", "/b.jpg"}},
 		{"windows", `C:\Users\Sam\Pictures\a.jpg`, []string{"/mnt/c/Users/Sam/Pictures/a.jpg"}},
 		{"quoted windows", `"D:\My Photos\a.jpg"`, []string{"/mnt/d/My Photos/a.jpg"}},
-		{"home", "~/Pictures", []string{"/home/me/Pictures"}},
+		{"home", "~/Pictures", []string{home + "/Pictures"}},
 		{"empty", "  ", nil},
 	}
 	for _, tt := range tests {
