@@ -35,11 +35,7 @@ const (
 const (
 	outFolderName = "squished"
 	debounce      = 140 * time.Millisecond
-	previewMax    = 1024
 	tuneListW     = 44
-	wipeStep      = 0.05
-	panStep       = 0.04
-	regionPad     = 8
 )
 
 var (
@@ -59,10 +55,9 @@ type decodedMsg struct {
 
 type debounceMsg struct{ gen int }
 
-type previewMsg struct {
-	gen           int
-	before, after *image.NRGBA
-	est           engine.Output
+type estimateMsg struct {
+	gen int
+	est engine.Output
 }
 
 type tuneModel struct {
@@ -70,7 +65,6 @@ type tuneModel struct {
 	files      []string
 	index      int
 	row        int
-	wiping     bool
 	confirming bool
 
 	format, level, size, save int
@@ -80,20 +74,17 @@ type tuneModel struct {
 	dec        *codec.Decoded
 	fileSize   int64
 	loadErr    string
-	pane       pane
-	focusX     float64
-	focusY     float64
+	thumb      *image.NRGBA
 	gen        int
 	est        engine.Output
 	hasEst     bool
 	estimating bool
-	paneCols   int
-	paneRows   int
-	paneOrigin image.Point
+	opening    bool
+	notice     string
 }
 
 func newTune(app *model, files []string) *tuneModel {
-	t := &tuneModel{app: app, files: files, pane: newPane(), focusX: 0.5, focusY: 0.5}
+	t := &tuneModel{app: app, files: files}
 	o := app.opts
 	t.level = o.Level
 	if t.level == 0 {
@@ -124,8 +115,7 @@ func (t *tuneModel) init() tea.Cmd { return t.loadFile() }
 
 func (t *tuneModel) loadFile() tea.Cmd {
 	path := t.files[t.index]
-	t.dec, t.loadErr, t.hasEst = nil, "", false
-	t.pane.before, t.pane.after = nil, nil
+	t.dec, t.thumb, t.loadErr, t.hasEst = nil, nil, "", false
 	return func() tea.Msg {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -157,7 +147,7 @@ func (t *tuneModel) options() engine.Options {
 	return o
 }
 
-// refresh asks for a new preview after a short pause, so that holding a key
+// refresh asks for a new estimate after a short pause, so that holding a key
 // does not queue up a pile of encodes.
 func (t *tuneModel) refresh() tea.Cmd {
 	t.gen++
@@ -166,43 +156,28 @@ func (t *tuneModel) refresh() tea.Cmd {
 	return tea.Tick(debounce, func(time.Time) tea.Msg { return debounceMsg{gen} })
 }
 
-func (t *tuneModel) buildPreview() tea.Cmd {
+func (t *tuneModel) estimate() tea.Cmd {
 	gen, dec, opts := t.gen, t.dec, t.options()
-	zoom := t.pane.zoomFactor()
-	fx, fy, cols, rows := t.focusX, t.focusY, t.paneCols, t.paneRows
-	return func() tea.Msg {
-		// Resize first, so the preview shows what the output will really be.
-		base := dec.Image
-		if opts.MaxDim > 0 {
-			base = codec.Shrink(base, opts.MaxDim, opts.MaxDim)
-		}
-		var src *image.NRGBA
-		if zoom == 0 {
-			src = codec.Shrink(base, previewMax, previewMax)
-		} else {
-			src = cropAt(base, fx, fy, cols/zoom+regionPad, rows*2/zoom+regionPad)
-		}
-		sample := *dec
-		sample.Image, sample.ICC, sample.Exif = src, nil, nil
-		o := opts
-		o.MaxDim = 0
-		msg := previewMsg{gen: gen, before: src, est: engine.Estimate(dec, opts)}
-		if out := engine.Compress(&sample, o); out.Err == nil {
-			if d, err := codec.Decode(out.Data); err == nil {
-				msg.after = d.Image
-			}
-		}
-		return msg
-	}
+	return func() tea.Msg { return estimateMsg{gen, engine.Estimate(dec, opts)} }
 }
 
-// cropAt cuts out a region centered on a relative position.
-func cropAt(m *image.NRGBA, fx, fy float64, w, h int) *image.NRGBA {
-	iw, ih := m.Rect.Dx(), m.Rect.Dy()
-	w, h = min(w, iw), min(h, ih)
-	x := max(0, min(int(fx*float64(iw))-w/2, iw-w))
-	y := max(0, min(int(fy*float64(ih))-h/2, ih-h))
-	return codec.Crop(m, image.Rect(x, y, x+w, y+h))
+// showResult opens the current file, with the current settings, in a real
+// image viewer. It is the only place squish shows what the output looks like.
+func (t *tuneModel) showResult() tea.Cmd {
+	if t.dec == nil || t.opening {
+		return nil
+	}
+	dir, err := t.app.previewDir()
+	if err != nil {
+		t.notice = "Can't make a temporary folder: " + err.Error()
+		return nil
+	}
+	input := t.files[t.index]
+	stem := strings.TrimSuffix(filepath.Base(input), filepath.Ext(input))
+	t.app.previews++
+	t.opening, t.notice = true, ""
+	path := filepath.Join(dir, fmt.Sprintf("%s-%d", stem, t.app.previews))
+	return showPreview(t.dec, t.options(), t.fileSize, path)
 }
 
 func (t *tuneModel) update(msg tea.Msg) tea.Cmd {
@@ -216,46 +191,29 @@ func (t *tuneModel) update(msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		t.dec, t.fileSize = msg.dec, msg.size
-		t.pane.before = codec.Shrink(msg.dec.Image, previewMax, previewMax)
-		t.pane.alpha = !msg.dec.Opaque
+		t.thumb = codec.Shrink(msg.dec.Image, thumbSize, thumbSize)
 		return t.refresh()
 	case debounceMsg:
 		if msg.gen == t.gen && t.dec != nil {
-			return t.buildPreview()
+			return t.estimate()
 		}
-	case previewMsg:
+	case estimateMsg:
 		if msg.gen != t.gen {
 			return nil
 		}
 		t.estimating = false
-		t.pane.before, t.pane.after = msg.before, msg.after
 		t.est, t.hasEst = msg.est, msg.est.Err == nil
+	case viewerMsg:
+		t.opening = false
+		t.notice = msg.notice()
 	case tea.KeyPressMsg:
 		return t.updateKeys(msg)
-	case tea.MouseClickMsg:
-		t.dragWipe(msg.Mouse().X, msg.Mouse().Y)
-	case tea.MouseMotionMsg:
-		if msg.Mouse().Button == tea.MouseLeft {
-			t.dragWipe(msg.Mouse().X, msg.Mouse().Y)
-		}
-	case tea.MouseWheelMsg:
-		t.pane.cycleZoom()
-		return t.refresh()
 	}
 	return nil
 }
 
-func (t *tuneModel) dragWipe(x, y int) {
-	if t.paneCols == 0 {
-		return
-	}
-	dx, dy := x-t.paneOrigin.X, y-t.paneOrigin.Y
-	if dy >= 0 && dy < t.paneRows && dx >= 0 && dx < t.paneCols {
-		t.pane.split = float64(dx) / float64(t.paneCols)
-	}
-}
-
 func (t *tuneModel) updateKeys(msg tea.KeyPressMsg) tea.Cmd {
+	t.notice = ""
 	if t.confirming {
 		switch {
 		case key.Matches(msg, keys.Yes):
@@ -279,20 +237,12 @@ func (t *tuneModel) updateKeys(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		return t.start()
-	case key.Matches(msg, keys.Wipe):
-		t.wiping = !t.wiping
-	case key.Matches(msg, keys.Zoom):
-		t.pane.cycleZoom()
-		return t.refresh()
+	case key.Matches(msg, keys.View):
+		return t.showResult()
 	case key.Matches(msg, keys.Prev):
 		return t.stepFile(-1)
 	case key.Matches(msg, keys.NextFile):
 		return t.stepFile(1)
-	}
-	if t.wiping {
-		return t.updateWipe(msg)
-	}
-	switch {
 	case key.Matches(msg, keys.Up):
 		t.row = (t.row + settingCount - 1) % settingCount
 	case key.Matches(msg, keys.Down):
@@ -303,32 +253,6 @@ func (t *tuneModel) updateKeys(msg tea.KeyPressMsg) tea.Cmd {
 		return t.change(1)
 	}
 	return nil
-}
-
-func (t *tuneModel) updateWipe(msg tea.KeyPressMsg) tea.Cmd {
-	switch {
-	case key.Matches(msg, keys.Left):
-		t.pane.nudgeSplit(-wipeStep)
-	case key.Matches(msg, keys.Right):
-		t.pane.nudgeSplit(wipeStep)
-	case key.Matches(msg, keys.PanUp):
-		return t.pan(0, -panStep)
-	case key.Matches(msg, keys.PanDown):
-		return t.pan(0, panStep)
-	case key.Matches(msg, keys.PanLeft):
-		return t.pan(-panStep, 0)
-	case key.Matches(msg, keys.PanRight):
-		return t.pan(panStep, 0)
-	}
-	return nil
-}
-
-func (t *tuneModel) pan(dx, dy float64) tea.Cmd {
-	if t.pane.zoomFactor() == 0 {
-		return nil
-	}
-	t.focusX, t.focusY = clamp01(t.focusX+dx), clamp01(t.focusY+dy)
-	return t.refresh()
 }
 
 func (t *tuneModel) stepFile(d int) tea.Cmd {
@@ -431,7 +355,7 @@ func (t *tuneModel) settings(w int) string {
 		style := th.Muted
 		pointer := "  "
 		v := th.Text.Render(value)
-		if i == t.row && !t.wiping {
+		if i == t.row {
 			style = th.Key
 			pointer = th.Key.Render("▸ ")
 			v = th.Accent.Render("‹ ") + th.Bold.Render(value) + th.Accent.Render(" ›")
@@ -495,26 +419,28 @@ func (t *tuneModel) summaryLine() string {
 	return head + "  " + th.Text.Render(num) + "  " + style.Render(label) + "  " + th.Muted.Render(t.est.Format.String())
 }
 
+func (t *tuneModel) status(w int) []string {
+	switch {
+	case t.opening:
+		return []string{" " + t.app.th.Faint.Render("Compressing the full image to show it...")}
+	case t.notice != "":
+		return noticeLines(t.app.th, t.notice, w)
+	}
+	return []string{""}
+}
+
 func (t *tuneModel) view(w, h int) string {
 	th := t.app.th
 	title := " " + th.Key.Render("squish") + th.Muted.Render(" › tune it")
-	bodyH := h - 5
-	left := t.app.panel("Settings", "\n"+t.settings(tuneListW-4), tuneListW, bodyH, !t.wiping)
+	status := t.status(w)
+	bodyH := h - 4 - len(status)
+	left := t.app.panel("Settings", "\n"+t.settings(tuneListW-4), tuneListW, bodyH, true)
 
 	rightW := w - tuneListW
-	t.paneCols, t.paneRows = rightW-4, bodyH-3
-	t.paneOrigin = image.Pt(tuneListW+2, 1+2)
-	paneTitle := "Preview"
-	if z := t.pane.zoomFactor(); z > 0 {
-		paneTitle = fmt.Sprintf("Preview at %d:1", z)
-	}
-	label := th.Muted.Render("before ◂") + th.Faint.Render(" drag ") + th.Muted.Render("▸ after")
-	right := t.app.panel(paneTitle+"   "+label, t.pane.view(t.paneCols, t.paneRows), rightW, bodyH, t.wiping)
+	label := th.Faint.Render("press ") + th.Key.Render("o") + th.Faint.Render(" to see the real result")
+	right := t.app.panel("Preview   "+label, thumbnail(t.thumb, t.dec != nil && !t.dec.Opaque, rightW-4, bodyH-3), rightW, bodyH, false)
 
-	bindings := []key.Binding{keys.Up, keys.Left, keys.Wipe, keys.Zoom}
-	if t.wiping {
-		bindings = []key.Binding{keys.Left, keys.PanUp, keys.Zoom, keys.Wipe}
-	}
+	bindings := []key.Binding{keys.Up, keys.Left, keys.View}
 	if len(t.files) > 1 {
 		bindings = append(bindings, keys.NextFile)
 	}
@@ -524,6 +450,7 @@ func (t *tuneModel) view(w, h int) string {
 		footer = " " + th.Warn.Render(fmt.Sprintf("Replace up to %d originals with smaller versions? ", len(t.files))) +
 			th.Key.Render("y") + th.Muted.Render(" yes  ") + th.Key.Render("n") + th.Muted.Render(" no")
 	}
-	return lipgloss.JoinVertical(lipgloss.Left,
-		title, lipgloss.JoinHorizontal(lipgloss.Top, left, right), " "+t.summaryLine(), "", footer)
+	parts := []string{title, lipgloss.JoinHorizontal(lipgloss.Top, left, right), " " + t.summaryLine()}
+	parts = append(parts, status...)
+	return lipgloss.JoinVertical(lipgloss.Left, append(parts, footer)...)
 }

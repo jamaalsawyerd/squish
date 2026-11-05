@@ -4,8 +4,8 @@
 
 **Squish your images down to size, in your terminal.**
 
-A friendly app for compressing photos and graphics, with live before and after
-previews and a tiny hydraulic press.
+A friendly app for compressing photos and graphics, with live size estimates and
+a tiny hydraulic press.
 
 ![squish compressing a folder of photos](docs/demo.gif)
 
@@ -15,8 +15,8 @@ previews and a tiny hydraulic press.
 
 - **Small files that still look right.** One Squeeze setting works the same
   across formats, tuned on real camera photos.
-- **See it before you commit.** Drag a wipe across any image, zoom in to the real
-  pixels, and watch the estimated size update as you change settings.
+- **See it before you commit.** Watch the estimated size update as you change
+  settings, then press `o` to open the full result in your own image viewer.
 - **Safe by default.** Originals are never touched, a file that wouldn't get
   smaller is left alone, and photos stay the right way up.
 - **Fast.** 22 camera originals took 13 seconds on a 16-thread machine.
@@ -73,10 +73,15 @@ Run `squish --help` to see every option.
 | Screen | Keys |
 |---|---|
 | **Pick** | `space` select, `a` select all, `enter` open, `backspace` up a folder, `g` go to a path, `.` hidden files, `tab` next step |
-| **Tune** | `↑` `↓` choose a setting, `←` `→` change it, `tab` move the wipe, `z` zoom, `[` `]` previous or next file, `enter` squish! |
-| **Tune, moving the wipe** | `←` `→` wipe, `w` `a` `s` `d` pan while zoomed, or drag with the mouse |
+| **Tune** | `↑` `↓` choose a setting, `←` `→` change it, `o` open the result in your image viewer, `[` `]` previous or next file, `enter` squish! |
 | **Squishing** | `esc` stop after the files in progress |
-| **Results** | `enter` compare before and after, `r` try new settings, `n` new batch |
+| **Results** | `o` open the saved file in your image viewer, `r` try new settings, `n` new batch |
+
+Press `o` on the Tune screen and squish compresses the whole image with your
+current settings, saves it to a temporary file and opens it in your default image
+viewer. Nothing is written beside your originals, and temporary files are deleted
+when you quit. Over SSH, or with no viewer to open, squish shows the file's path
+instead.
 
 ## How much does it save?
 

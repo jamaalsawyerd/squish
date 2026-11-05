@@ -35,7 +35,7 @@ Sleep 500ms
 Type "a"
 Sleep 900ms
 
-# Tune them, and have a look at the wipe.
+# Tune them, and watch the estimate change.
 Tab
 Sleep 1800ms
 Down
@@ -47,22 +47,6 @@ Sleep 1200ms
 Left
 Sleep 300ms
 Left
-Sleep 900ms
-Tab
-Sleep 300ms
-Right 5
-Sleep 700ms
-Left 9
-Sleep 900ms
-Tab
-Sleep 300ms
-Type "z"
-Sleep 1800ms
-Type "z"
-Sleep 1500ms
-Type "z"
-Sleep 200ms
-Type "z"
 Sleep 900ms
 
 # Squish!

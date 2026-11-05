@@ -416,10 +416,7 @@ func (p *pickModel) infoBody(w, rows int) string {
 		return th.Bad.Render("Can't read this image")
 	}
 	imgRows := max(rows-3, 2)
-	v := newPane()
-	v.before = t.img
-	v.split = 1
-	pic := v.view(w, imgRows)
+	pic := thumbnail(t.img, false, w, imgRows)
 	iw, ih := t.w, t.h
 	if tb := t.img.Bounds(); (tb.Dx() > tb.Dy()) != (iw > ih) {
 		iw, ih = ih, iw // The header size ignores EXIF rotation.
