@@ -1,6 +1,6 @@
 // Package gfx draws small raster images and renders them to the terminal.
 // Each character cell shows two pixels using the half block glyph, which is why
-// the image previews and the animated press can share one code path.
+// the image thumbnails and the animated press can share one code path.
 package gfx
 
 import (
@@ -173,8 +173,8 @@ func FillEllipse(m *image.NRGBA, cx, cy, rx, ry float64, fill func(t float64) co
 	}
 }
 
-// Blit copies src into the rectangle, scaling with nearest neighbor. Scaled
-// pixels stay crisp, and that is also how a zoomed preview should look.
+// Blit copies src into the rectangle, scaling with nearest neighbor so that
+// scaled pixels stay crisp.
 func Blit(dst *image.NRGBA, src *image.NRGBA, r image.Rectangle) {
 	if src == nil || r.Empty() {
 		return

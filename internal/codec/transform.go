@@ -40,17 +40,6 @@ func scale(m *image.NRGBA, opaque bool, boxW, boxH int, k xdraw.Interpolator) *i
 	return out
 }
 
-// Crop returns a copy of a region of m.
-func Crop(m *image.NRGBA, r image.Rectangle) *image.NRGBA {
-	r = r.Intersect(m.Rect)
-	out := image.NewNRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
-	for y := range r.Dy() {
-		src := m.Pix[m.PixOffset(r.Min.X, r.Min.Y+y):]
-		copy(out.Pix[y*out.Stride:y*out.Stride+r.Dx()*4], src)
-	}
-	return out
-}
-
 // IsGraphic guesses whether an image is a screenshot, logo or diagram rather
 // than a photo. Those have long runs of identical pixels, where sensor noise
 // means photos almost never do. They need different compression settings.

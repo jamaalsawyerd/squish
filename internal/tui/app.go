@@ -59,6 +59,7 @@ func (s Summary) String() string {
 // Run opens the app and blocks until it closes.
 func Run(ctx context.Context, cfg Config) (Summary, error) {
 	m := newModel(cfg)
+	defer m.removePreviews()
 	final, err := tea.NewProgram(m, tea.WithContext(ctx)).Run()
 	if err != nil {
 		return Summary{}, err
@@ -85,6 +86,8 @@ type model struct {
 	opts          engine.Options
 	summary       Summary
 	stats         stats.Stats
+	tempDir       string // Holds preview images. Made on first use.
+	previews      int    // Numbers preview files, so that no two share a name.
 
 	pick    *pickModel
 	tune    *tuneModel
@@ -216,7 +219,6 @@ func (m *model) step() {
 func (m *model) View() tea.View {
 	v := tea.NewView(m.content())
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
 	v.WindowTitle = "squish"
 	return v
 }
