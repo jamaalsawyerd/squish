@@ -1,0 +1,19 @@
+# Build output
+/bin/
+/dist/
+/squish
+*.exe
+
+# Test and coverage output
+*.test
+*.out
+coverage.*
+
+# Local sample images and compression output
+/samples/
+*-squished.*
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
