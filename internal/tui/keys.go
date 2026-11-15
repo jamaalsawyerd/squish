@@ -8,7 +8,8 @@ func binding(help, desc string, keys ...string) key.Binding {
 
 var keys = struct {
 	Up, Down, Left, Right                 key.Binding
-	Open, Parent, Toggle, All, Next, Path key.Binding
+	Open, Parent, Toggle, All, Deep, Next key.Binding
+	Path                                  key.Binding
 	Hidden, Quit, Back, Start, View       key.Binding
 	Prev, NextFile, Retune, New, Yes, No  key.Binding
 }{
@@ -20,6 +21,7 @@ var keys = struct {
 	Parent:   binding("backspace", "up a folder", "backspace", "left", "h"),
 	Toggle:   binding("space", "select", "space"),
 	All:      binding("a", "select all", "a"),
+	Deep:     binding("A", "+ subfolders", "A", "shift+a"),
 	Next:     binding("tab", "next step", "tab"),
 	Path:     binding("g", "go to path", "g"),
 	Hidden:   binding(".", "hidden files", "."),
