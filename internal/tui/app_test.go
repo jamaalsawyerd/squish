@@ -179,3 +179,48 @@ func TestTruncateNameKeepsExtension(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestPickSelectsFoldersRecursively(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"trip/day1", "trip/day2/raw", "trip/.cache", "other"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, name := range []string{
+		"trip/a.png", "trip/day1/b.png", "trip/day2/raw/c.png",
+		"trip/.cache/hidden.png", "trip/day1/b-squished.png", "other/d.png",
+	} {
+		writeImage(t, filepath.Join(root, name), i)
+	}
+	if err := os.WriteFile(filepath.Join(root, "trip", "notes.txt"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := newModel(Config{})
+	m.width, m.height = 120, 40
+	pump(m, m.pick.readDir(root)())
+	if e := m.pick.current(); e == nil || e.name != "other" {
+		t.Fatalf("cursor on %+v, want other/", e)
+	}
+	m.pick.cursor = 1 // trip/
+	space := tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
+	pump(m, space)
+	if got := len(m.pick.selected); got != 3 {
+		t.Fatalf("selected %d images in trip/, want 3: %v", got, m.pick.order)
+	}
+	if !strings.Contains(m.content(), "3 selected") {
+		t.Error("the trip/ row doesn't show how many images are selected in it")
+	}
+
+	m.pick.cursor = 1 // Back to trip/, since space moves down.
+	pump(m, space)
+	if got := len(m.pick.selected); got != 0 {
+		t.Errorf("selected = %d after toggling trip/ again, want 0", got)
+	}
+
+	pump(m, tea.KeyPressMsg{Code: 'a', Text: "A", Mod: tea.ModShift})
+	if got := len(m.pick.selected); got != 4 {
+		t.Errorf("shift+a selected %d images, want 4: %v", got, m.pick.order)
+	}
+}

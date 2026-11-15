@@ -39,6 +39,13 @@ type dirMsg struct {
 	err     error
 }
 
+// treeMsg carries every image found in a folder and its subfolders.
+type treeMsg struct {
+	dir   string
+	files []pickEntry
+	err   error
+}
+
 const (
 	thumbSize  = 128
 	introStart = 1.5
@@ -189,6 +196,69 @@ func (p *pickModel) toggleAll() {
 	}
 }
 
+// readTree finds every image in a folder and its subfolders, skipping hidden
+// folders and squish's own output, the same way --recursive does.
+func readTree(dir string) tea.Cmd {
+	return func() tea.Msg {
+		paths, err := engine.Expand([]string{dir}, true)
+		if err != nil {
+			return treeMsg{dir: dir, err: err}
+		}
+		files := make([]pickEntry, 0, len(paths))
+		for _, path := range paths {
+			if st, err := os.Stat(path); err == nil {
+				files = append(files, pickEntry{name: filepath.Base(path), path: path, size: st.Size()})
+			}
+		}
+		return treeMsg{dir: dir, files: files}
+	}
+}
+
+// toggleTree selects every image found in a folder tree, or unselects them all
+// when they are all selected already.
+func (p *pickModel) toggleTree(msg treeMsg) {
+	name := folderName(msg.dir)
+	if msg.err != nil {
+		p.status = "Can't read everything in " + name
+		return
+	}
+	if len(msg.files) == 0 {
+		p.status = "No images in " + name
+		return
+	}
+	all := true
+	for _, e := range msg.files {
+		if _, ok := p.selected[e.path]; !ok {
+			all = false
+			break
+		}
+	}
+	for _, e := range msg.files {
+		if all {
+			p.toggle(e.path, e.size)
+		} else {
+			p.add(e.path, e.size)
+		}
+	}
+	verb := "Selected "
+	if all {
+		verb = "Unselected "
+	}
+	p.status = verb + units.Count(len(msg.files), "image") + " in " + name
+}
+
+// selectedUnder counts the selected images inside a folder, at any depth.
+func (p *pickModel) selectedUnder(dir string) int {
+	prefix := dir + string(filepath.Separator)
+	n := 0
+	for path := range p.selected {
+		if strings.HasPrefix(path, prefix) {
+			n++
+		}
+	}
+	return n
+}
+
 // addPaths handles pasted or dragged paths. Folders are opened, and files are
 // selected.
 func (p *pickModel) addPaths(paths []string) tea.Cmd {
@@ -238,6 +308,9 @@ func (p *pickModel) update(msg tea.Msg) tea.Cmd {
 	case thumbMsg:
 		p.thumbs[msg.path] = msg
 		return nil
+	case treeMsg:
+		p.toggleTree(msg)
+		return nil
 	case tea.PasteMsg:
 		if !p.typing {
 			return p.addPaths(parsePaths(msg.Content))
@@ -286,13 +359,23 @@ func (p *pickModel) updateKeys(msg tea.KeyPressMsg) tea.Cmd {
 		p.move(1)
 		return p.wantThumb()
 	case key.Matches(msg, keys.Toggle):
-		if e := p.current(); e != nil && !e.dir {
-			p.toggle(e.path, e.size)
-			p.move(1)
-			return p.wantThumb()
+		e := p.current()
+		if e == nil {
+			return nil
 		}
+		if e.dir {
+			p.status = "Looking for images in " + e.name + "/"
+			p.move(1)
+			return tea.Batch(readTree(e.path), p.wantThumb())
+		}
+		p.toggle(e.path, e.size)
+		p.move(1)
+		return p.wantThumb()
 	case key.Matches(msg, keys.All):
 		p.toggleAll()
+	case key.Matches(msg, keys.Deep):
+		p.status = "Looking for images in " + folderName(p.dir)
+		return readTree(p.dir)
 	case key.Matches(msg, keys.Open):
 		e := p.current()
 		switch {
@@ -339,7 +422,7 @@ func (p *pickModel) view(w, h int) string {
 	tagline := th.Muted.Render("Pick some images to squish. Drag files in, or browse below.")
 	header := lipgloss.JoinVertical(lipgloss.Left, logo, " "+tagline)
 
-	footerText := p.app.footer(keys.Toggle, keys.All, keys.Open, keys.Parent, keys.Path, keys.Next, keys.Quit)
+	footerText := p.app.footer(keys.Toggle, keys.All, keys.Deep, keys.Open, keys.Parent, keys.Path, keys.Next, keys.Quit)
 	status := th.Muted.Render(fmt.Sprintf(" %d selected · %s", len(p.selected), units.Bytes(p.selectedSize())))
 	if p.status != "" {
 		status += th.Warn.Render("   " + p.status)
@@ -377,6 +460,9 @@ func (p *pickModel) listBody(w, rows int) string {
 		name, size := e.name, ""
 		if e.dir {
 			name += "/"
+			if n := p.selectedUnder(e.path); n > 0 {
+				size = fmt.Sprintf("%d selected", n)
+			}
 		} else {
 			size = units.Bytes(e.size)
 		}
@@ -423,6 +509,15 @@ func (p *pickModel) infoBody(w, rows int) string {
 	}
 	meta := fmt.Sprintf("%s · %d×%d · %s", t.format, iw, ih, units.Bytes(e.size))
 	return lipgloss.JoinVertical(lipgloss.Left, pic, "", th.Muted.Render(meta))
+}
+
+// folderName is the last part of a folder's path, for status messages.
+func folderName(dir string) string {
+	name := filepath.Base(dir)
+	if !strings.HasSuffix(name, string(filepath.Separator)) {
+		name += string(filepath.Separator)
+	}
+	return name
 }
 
 // shortenPath keeps the end of a path, which is the part that matters.
